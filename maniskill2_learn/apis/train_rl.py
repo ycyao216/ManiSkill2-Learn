@@ -10,7 +10,7 @@ from maniskill2_learn.env import ReplayMemory, save_eval_statistics
 from maniskill2_learn.utils.data import GDict, dict_to_str, is_not_null, num_to_str, to_float
 from maniskill2_learn.utils.math import EveryNSteps
 from maniskill2_learn.utils.meta import get_logger, get_total_memory, get_world_rank, td_format
-from maniskill2_learn.utils.torch import TensorboardLogger, save_checkpoint
+from maniskill2_learn.utils.torch import TensorboardLogger, save_checkpoint, WandbLogger
 
 
 class EpisodicStatistics:
@@ -157,6 +157,9 @@ def train_rl(
     ep_stats_cfg={},
     warm_up_training=False,
     warm_up_train_q_only=-1,
+    logger_type = "tensorboard",
+    wandb_key = None,
+    wandb_cfg = None,
 ):
     world_rank = get_world_rank()
     logger = get_logger()
@@ -167,7 +170,13 @@ def train_rl(
 
     tf_logs = ReplayMemory(n_updates, None)
     tf_logs.reset()
-    tf_logger = TensorboardLogger(work_dir)
+    if logger_type == "tensorboard":
+        exp_logger = TensorboardLogger(work_dir)
+    elif logger_type == "wandb":
+        exp_logger = WandbLogger(wandb_key=wandb_key, log_dir=work_dir, wandb_cfg=wandb_cfg)
+    else: 
+        raise NotImplementedError(f"Only tensorboard or wandb loggers are implemented, given {logger_type}")
+
 
     if print_steps is None:
         print_steps = n_steps
@@ -359,7 +368,7 @@ def train_rl(
 
         if check_tf_log.check(steps):
             # print(GDict(tb_log).shape, GDict(tb_log).type)
-            tf_logger.log(tb_log, n_iter=steps, tag_name="train")
+            exp_logger.log(tb_log, n_iter=steps, tag_name="train")
             # exit(0)
 
         percentage = f"{((steps - begin_steps) / (total_steps - begin_steps)) * 100:.0f}%"
@@ -387,7 +396,7 @@ def train_rl(
             agent.set_mode(mode="train")
 
             eval_dict = dict(mean_length=np.mean(lens), std_length=np.std(lens), mean_reward=np.mean(rewards), std_reward=np.std(rewards))
-            tf_logger.log(eval_dict, n_iter=steps, tag_name="test")
+            exp_logger.log(eval_dict, n_iter=steps, tag_name="test")
 
         if check_checkpoint.check(steps):
             standardized_ckpt_step = check_checkpoint.standard(steps)
