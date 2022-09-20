@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 
 from .base_logger import BaseLogger
 
+
 class TensorboardLogger(BaseLogger):
     def __init__(self, log_dir=None):
         from torch.utils.tensorboard import SummaryWriter
