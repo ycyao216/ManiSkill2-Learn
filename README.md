@@ -4,7 +4,9 @@ ManiSkill2-Learn is a framework for training agents on [SAPIEN Open-Source Manip
 
 Updates will be posted here.
 
-Sep. 18, 2022: Fixed demonstration / replay loading such that when specifying `num_samples=n` (i.e. limit the number of demos loaded per file to be `n`), it will not open the entire `.h5` file, thus saving memory.
+Sep. 25, 2022: Address different action sampling modes during evaluation, since using the mean of gaussian as action output during evaluation could sometimes lead to lower success rates than during training rollouts, where actions are sampled stochastically. See [here](#important-notes-for-evaluation)
+
+Sep. 18, 2022: Fixed demonstration / replay loading such that when specifying `num_samples=n` (i.e. limit the number of demos loaded per file to be `n`), it will not open the entire `.h5` file, thus saving memory. Also, add instructions for dynamically loading demonstrations through `dynamic_loading` in the replay buffer configuration.
 
 Sep. 14, 2022: Added gzip by default when saving `.hdf5` files.
 
@@ -26,6 +28,7 @@ ImportError: sys.meta_path is None, Python is likely shutting down
     - [Converting and Viewing Demonstrations](#converting-and-viewing-demonstrations)
     - [Training and Evaluation](#training-and-evaluation)
     - [Important Notes for Point Cloud-based Learning (with Demonstrations)](#important-notes-for-point-cloud-based-learning-with-demonstrations)
+    - [Important Notes for Evaluation](#important-notes-for-evaluation)
   - [More Detailed Workflow](#more-detailed-workflow)
     - [Converting and Viewing Demonstrations](#converting-and-viewing-demonstrations-1)
       - [Demonstration Format and Environment Wrapper](#demonstration-format-and-environment-wrapper)
@@ -159,6 +162,11 @@ For point cloud-based learning, there are some useful configurations you can add
 - You can visualize point clouds using the utilities [here](https://github.com/haosulab/ManiSkill2-Learn/blob/main/maniskill2_learn/utils/visualization/o3d_utils.py). You can import such functionalities through `from maniskill2_learn.utils.visualization import visualize_pcd`.
 
 
+### Important Notes for Evaluation
+
+When you run non-Behavior-Cloning RL algorithms (e.g. DAPG+PPO), during training, actions are sampled stochastically, i.e. randomly sampled based on the output gaussian distribution. During evaluation, by default, the gaussian mean is used as action output. However, this could sometimes cause the evaluation result to be a bit lower than during training, for some environments such as `TurnFaucet-v0` and `PickSingleYCB-v0`. This is because noise could be beneficial for success (e.g. adding noise leads to more object grasping attempts). If you encounter this case, you could add `--cfg-options "eval_cfg.sample_mode=sample"` such that the policy will randomly sample actions during evaluation.
+
+
 
 
 
@@ -252,6 +260,24 @@ ManiSkill2-learn provides an easy-to-use interface to support simulation paralle
 For the replay buffer used during online agent rollout, its configuration is specified in the `replay_cfg` dictionary of the config file. Some algorithms (e.g. GAIL) also have `recent_traj_replay_cfg` since the recent rollout trajectories are used for discriminator training. 
 
 For algorithms that use demonstrations (e.g. DAPG, GAIL), additional replay buffers need to be used, and these replay buffers exclusively contain demonstrations (`demo_replay_cfg` for DAPG+PPO, and `expert_replay_cfg` for GAIL+SAC). Since demonstration files can contain many trajectories, and loading all of them could result in out-of-memory, we provided a useful argument `num_samples` to limit the number of demonstration trajectories loaded into the replay buffer **for each file in `buffer_filenames`** (in default configurations, `num_samples=-1`, so all trajectories are loaded). Currently, if `num_samples` is used, then the first `num_samples` trajectories are loaded, instead of randomly sampling trajectories.
+
+Alternatively, you could turn on `dynamic_loading` in the replay buffer configuration. In this case, a batch of demonstrations will be first loaded into the replay buffer, and after all its entries have been sampled, a new batch will be loaded. Thus, you don't need to limit the number of trajectories loaded per demonstration file. As an example for DAPG+PPO,
+
+```
+demo_replay_cfg=dict(
+    type="ReplayMemory",
+    capacity=int(2e4),
+    num_samples=-1,
+    cache_size=int(2e4),
+    dynamic_loading=True,
+    synchronized=False,
+    keys=["obs", "actions", "dones", "episode_dones"],
+    buffer_filenames=[
+        "PATH_TO_DEMO.h5",
+    ],
+),
+```
+
 
 #### Some things to keep in mind
 
